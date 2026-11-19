@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 
 type TagAutocompleteProps = {
   availableTags: readonly string[];
@@ -17,6 +17,7 @@ export function TagAutocomplete({
 }: TagAutocompleteProps) {
   const listboxId = useId();
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const currentTokenStart = value.lastIndexOf(",") + 1;
   const currentToken = value.slice(currentTokenStart);
   const search = currentToken.trim().toLowerCase();
@@ -32,11 +33,56 @@ export function TagAutocomplete({
       })
     : [];
   const showSuggestions = isOpen && suggestions.length > 0;
+  const activeOptionIndex =
+    activeIndex !== null && activeIndex < suggestions.length ? activeIndex : null;
   const leadingWhitespace = currentToken.match(/^\s*/)?.[0] ?? "";
+
+  function closeSuggestions() {
+    setIsOpen(false);
+    setActiveIndex(null);
+  }
 
   function selectTag(tag: string) {
     onChange(`${value.slice(0, currentTokenStart)}${leadingWhitespace}${tag}`);
-    setIsOpen(false);
+    closeSuggestions();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    switch (event.key) {
+      case "ArrowDown":
+        if (suggestions.length === 0) return;
+        event.preventDefault();
+        setIsOpen(true);
+        setActiveIndex((current) =>
+          current === null ? 0 : (current + 1) % suggestions.length,
+        );
+        break;
+      case "ArrowUp":
+        if (suggestions.length === 0) return;
+        event.preventDefault();
+        setIsOpen(true);
+        setActiveIndex((current) =>
+          current === null
+            ? suggestions.length - 1
+            : (current - 1 + suggestions.length) % suggestions.length,
+        );
+        break;
+      case "Enter":
+        if (showSuggestions && activeOptionIndex !== null) {
+          event.preventDefault();
+          selectTag(suggestions[activeOptionIndex]);
+        }
+        break;
+      case "Escape":
+        if (isOpen) {
+          event.preventDefault();
+          closeSuggestions();
+        }
+        break;
+      case "Tab":
+        closeSuggestions();
+        break;
+    }
   }
 
   return (
@@ -48,20 +94,29 @@ export function TagAutocomplete({
         aria-label={label}
         autoComplete="off"
         name="tags"
-        onBlur={() => setIsOpen(false)}
+        onBlur={closeSuggestions}
         onChange={(event) => {
           onChange(event.currentTarget.value);
           setIsOpen(true);
+          setActiveIndex(null);
         }}
+        onKeyDown={handleKeyDown}
+        aria-activedescendant={
+          showSuggestions && activeOptionIndex !== null
+            ? `${listboxId}-option-${activeOptionIndex}`
+            : undefined
+        }
         role="combobox"
         type="text"
         value={value}
       />
       {showSuggestions ? (
         <div className="tag-suggestions" id={listboxId} role="listbox">
-          {suggestions.map((tag) => (
+          {suggestions.map((tag, index) => (
             <button
-              aria-selected="false"
+              aria-selected={activeOptionIndex === index}
+              className={activeOptionIndex === index ? "active-option" : undefined}
+              id={`${listboxId}-option-${index}`}
               key={tag}
               onClick={() => selectTag(tag)}
               onMouseDown={(event) => event.preventDefault()}
